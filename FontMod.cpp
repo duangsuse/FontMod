@@ -11,7 +11,7 @@ namespace fs = std::filesystem;
 
 #include "yaml-cpp/yaml.h"
 
-#include "winmm.hpp"
+#include "orig_winmm/winmm.hpp"
 #include "Util.hpp"
 #include "DefConfigFile.hpp"
 
