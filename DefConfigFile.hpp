@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr auto defConfigFile = ""
+const char defConfigFile[] = ""
 "style: &style\r\n"
 "# Remove '#' to override font style\r\n"
 "#  size: 0\r\n"
