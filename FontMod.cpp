@@ -1,6 +1,7 @@
 ﻿#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+
 #include <cstdint>
 #include <unordered_map>
 #include <string>
@@ -15,13 +16,13 @@ namespace fs = std::filesystem;
 #include "Util.hpp"
 #include "DefConfigFile.hpp"
 
-#define CONFIG_FILE L"FontMod.yaml"
-#define LOG_FILE L"FontMod.log"
+const char CONFIG_FILE[] = L"FontMod.yaml";
+const char LOG_FILE[] = L"FontMod.log";
 
 #pragma pack(push, 1)
 struct jmp
 {
-	uint8_t opcode;
+	uint8_t opcode = 0xE9;
 	size_t address;
 };
 #pragma pack(pop)
@@ -30,32 +31,29 @@ size_t addrCreateFontIndirectW = 0;
 size_t addrGetStockObject = 0;
 
 // overrideflags
-#define	_NONE 0
-#define	_HEIGHT 1 << 1
-#define	_WIDTH 1 << 2
-#define	_WEIGHT 1 << 3
-#define	_ITALIC 1 << 4
-#define	_UNDERLINE 1 << 5
-#define	_STRIKEOUT 1 << 6
-#define	_CHARSET 1 << 7
-#define	_OUTPRECISION 1 << 8
-#define	_CLIPPRECISION 1 << 9
-#define	_QUALITY 1 << 10
-#define	_PITCHANDFAMILY 1 << 11
+constexpr uint32_t bitflagAt(unsigned idx) { return 0b1 << idx; }
+const uint32_t _NONE   = 0;
+const uint32_t _HEIGHT = bitflagAt(1);
+const uint32_t _WIDTH  = bitflagAt(2);
+const uint32_t _WEIGHT = bitflagAt(3);
+const uint32_t _ITALIC = bitflagAt(4);
+const uint32_t _UNDERLINE = bitflagAt(5);
+const uint32_t _STRIKEOUT = bitflagAt(6);
+const uint32_t _CHARSET   = bitflagAt(7);
+const uint32_t _OUTPRECISION  = bitflagAt(8);
+const uint32_t _CLIPPRECISION = bitflagAt(9);
+const uint32_t _QUALITY = bitflagAt(10);
+const uint32_t _PITCHANDFAMILY = bitflagAt(11);
 
 struct font
 {
 	std::wstring replace;
 	uint32_t overrideFlags;
-	long height;
-	long width;
+	long height, width;
 	long weight;
-	bool italic;
-	bool underLine;
-	bool strikeOut;
+	bool italic, underLine, strikeOut;
 	BYTE charSet;
-	BYTE outPrecision;
-	BYTE clipPrecision;
+	BYTE outPrecision, clipPrecision;
 	BYTE quality;
 	BYTE pitchAndFamily;
 };
@@ -92,61 +90,62 @@ __declspec(naked) HGDIOBJ WINAPI CallOrigGetStockObject(int i)
 	}
 }
 
+const size_t SIZE_FN_PROLOG_OFFSET = 5;
+
 HFONT WINAPI MyCreateFontIndirectW(LOGFONTW* lplf)
 {
-	if (logFile)
+	if (logFile ISNULL) { goto callorig; }
+	std::string name;
+	if (Utf16ToUtf8(lplf->lfFaceName, name))
 	{
-		std::string name;
-		if (Utf16ToUtf8(lplf->lfFaceName, name))
-		{
-#define bool_string(b) b != FALSE ? "true" : "false"
-			fprintf_s(logFile,
-				"[CreateFont] name = \"%s\", height = %d, "
-				"width = %d, escapement = %d, "
-				"orientation = %d, weight = %d, "
-				"italic = %s, underline = %s, "
-				"strikeout = %s, charset = %d, "
-				"outprecision = %d, clipprecision = %d, "
-				"quality = %d, pitchandfamily = %d\n",
-				name.c_str(), lplf->lfHeight,
-				lplf->lfWidth, lplf->lfEscapement,
-				lplf->lfOrientation, lplf->lfWeight,
-				bool_string(lplf->lfItalic), bool_string(lplf->lfUnderline),
-				bool_string(lplf->lfStrikeOut), lplf->lfCharSet,
-				lplf->lfOutPrecision, lplf->lfClipPrecision,
-				lplf->lfQuality, lplf->lfPitchAndFamily);
-		}
+		fprintf_s(logFile,
+			"[CreateFont] name = \"%s\", height = %d, "
+			"width = %d, escapement = %d, "
+			"orientation = %d, weight = %d, "
+			"italic = %s, underline = %s, "
+			"strikeout = %s, charset = %d, "
+			"outprecision = %d, clipprecision = %d, "
+			"quality = %d, pitchandfamily = %d\n",
+			name.c_str(), lplf->lfHeight,
+			lplf->lfWidth, lplf->lfEscapement,
+			lplf->lfOrientation, lplf->lfWeight,
+			bool_string(lplf->lfItalic), bool_string(lplf->lfUnderline),
+			bool_string(lplf->lfStrikeOut), lplf->lfCharSet,
+			lplf->lfOutPrecision, lplf->lfClipPrecision,
+			lplf->lfQuality, lplf->lfPitchAndFamily);
 	}
 
 	auto it = fontsMap.find(lplf->lfFaceName);
-	if (it != fontsMap.end())
-	{
-		size_t len = it->second.replace._Copy_s(lplf->lfFaceName, LF_FACESIZE, LF_FACESIZE);
-		lplf->lfFaceName[len] = L'\0';
+	if (it == fontsMap.end()) { goto callorig; }
 
-		if ((it->second.overrideFlags & _HEIGHT) == _HEIGHT)
-			lplf->lfHeight = it->second.height;
-		if ((it->second.overrideFlags & _WIDTH) == _WIDTH)
-			lplf->lfWidth = it->second.width;
-		if ((it->second.overrideFlags & _WEIGHT) == _WEIGHT)
-			lplf->lfWeight = it->second.weight;
-		if ((it->second.overrideFlags & _ITALIC) == _ITALIC)
-			lplf->lfItalic = it->second.italic;
-		if ((it->second.overrideFlags & _UNDERLINE) == _UNDERLINE)
-			lplf->lfUnderline = it->second.underLine;
-		if ((it->second.overrideFlags & _STRIKEOUT) == _STRIKEOUT)
-			lplf->lfStrikeOut = it->second.strikeOut;
-		if ((it->second.overrideFlags & _CHARSET) == _CHARSET)
-			lplf->lfCharSet = it->second.charSet;
-		if ((it->second.overrideFlags & _OUTPRECISION) == _OUTPRECISION)
-			lplf->lfOutPrecision = it->second.outPrecision;
-		if ((it->second.overrideFlags & _CLIPPRECISION) == _CLIPPRECISION)
-			lplf->lfClipPrecision = it->second.clipPrecision;
-		if ((it->second.overrideFlags & _QUALITY) == _QUALITY)
-			lplf->lfQuality = it->second.quality;
-		if ((it->second.overrideFlags & _PITCHANDFAMILY) == _PITCHANDFAMILY)
-			lplf->lfPitchAndFamily = it->second.pitchAndFamily;
-	}
+	size_t len = it->second.replace._Copy_s(lplf->lfFaceName, LF_FACESIZE, LF_FACESIZE);
+	lplf->lfFaceName[len] = L'\0';
+
+	auto flags = it->second.overrideFlags;
+	if (flags & _HEIGHT)
+		lplf->lfHeight = it->second.height;
+	if (flags & _WIDTH)
+		lplf->lfWidth = it->second.width;
+	if (flags & _WEIGHT)
+		lplf->lfWeight = it->second.weight;
+	if (flags & _ITALIC)
+		lplf->lfItalic = it->second.italic;
+	if (flags & _UNDERLINE)
+		lplf->lfUnderline = it->second.underLine;
+	if (flags & _STRIKEOUT)
+		lplf->lfStrikeOut = it->second.strikeOut;
+	if (flags & _CHARSET)
+		lplf->lfCharSet = it->second.charSet;
+	if (flags & _OUTPRECISION)
+		lplf->lfOutPrecision = it->second.outPrecision;
+	if (flags & _CLIPPRECISION)
+		lplf->lfClipPrecision = it->second.clipPrecision;
+	if (flags & _QUALITY)
+		lplf->lfQuality = it->second.quality;
+	if (flags & _PITCHANDFAMILY)
+		lplf->lfPitchAndFamily = it->second.pitchAndFamily;
+
+callorig:
 	return CallOrigCreateFontIndirectW(lplf);
 }
 
@@ -155,11 +154,11 @@ HGDIOBJ WINAPI MyGetStockObject(int i)
 	switch (i)
 	{
 	case OEM_FIXED_FONT:
+	case SYSTEM_FONT:
 	case ANSI_FIXED_FONT:
 	case ANSI_VAR_FONT:
-	case SYSTEM_FONT:
-	case DEVICE_DEFAULT_FONT:
 	case SYSTEM_FIXED_FONT:
+	case DEVICE_DEFAULT_FONT:
 		return newGSOFont;
 	}
 	return CallOrigGetStockObject(i);
@@ -167,12 +166,12 @@ HGDIOBJ WINAPI MyGetStockObject(int i)
 
 bool LoadSettings(HMODULE hModule, const fs::path& fileName, wchar_t* errMsg, GSOFontMode& fixGSOFont, LOGFONT& userGSOFont, bool& debug)
 {
-	bool ret = false;
+	bool ret = false; // TODO remove this unnecessary variable with boolean return
 	std::ifstream fin(fileName);
-	if (fin)
+	if (fin) // TODO replace this with early return
 	{
 		do {
-			YAML::Node config;
+			YAML::Node config; // TODO promote this variable
 			try
 			{
 				config = YAML::Load(fin);
@@ -189,7 +188,7 @@ bool LoadSettings(HMODULE hModule, const fs::path& fileName, wchar_t* errMsg, GS
 				break;
 			}
 
-			if (auto node = FindNode(config, "fonts"); node && node.IsMap())
+			if (auto node = FindNode(config, "fonts"); node && node.IsMap()) // TODO extract function GetMapChild: function<T (string)>
 			{
 				for (const auto& i : node)
 				{
@@ -396,7 +395,7 @@ bool LoadSettings(HMODULE hModule, const fs::path& fileName, wchar_t* errMsg, GS
 						}
 					}
 				}
-			}
+			} // TODO extract duplicate logics
 
 			if (auto node = FindNode(config, "debug"); node && node.IsScalar())
 				debug = node.as<bool>();
@@ -419,13 +418,13 @@ void LoadUserFonts(const fs::path& path)
 	try
 	{
 		auto fontsPath = path / L"fonts";
-		if (fs::is_directory(fontsPath))
+		if (fs::is_directory(fontsPath)) // TODO replace with early-return
 		{
 			for (auto& f : fs::directory_iterator(fontsPath))
 			{
 				if (f.is_directory()) continue;
 				int ret = AddFontResourceExW(f.path().c_str(), FR_PRIVATE, 0);
-				if (logFile)
+				if (logFile) // TODO remove unnecessary indentation
 				{
 					fprintf_s(logFile, "[LoadUserFonts] filename = \"%s\", ret = %d, lasterror = %d\n", f.path().filename().u8string().c_str(), ret, GetLastError());
 				}
@@ -434,7 +433,7 @@ void LoadUserFonts(const fs::path& path)
 	}
 	catch (const std::exception& e)
 	{
-		if (logFile)
+		if (logFile) // TODO extract with preprocessor macro
 		{
 			fprintf_s(logFile, "[LoadUserFonts] exception: \"%s\"\n", e.what());
 		}
@@ -444,31 +443,30 @@ void LoadUserFonts(const fs::path& path)
 void InlineHook(void* func, void* hookFunc, size_t* origAddr)
 {
 	DWORD oldProtect;
-	if (VirtualProtect(func, 5, PAGE_EXECUTE_READWRITE, &oldProtect))
+	if (VirtualProtect(func, SIZE_FN_PROLOG_OFFSET, PAGE_EXECUTE_READWRITE, &oldProtect))
 	{
 		jmp* hook = reinterpret_cast<jmp*>(func);
-		hook->opcode = 0xE9; // jmp
-		hook->address = (size_t)hookFunc - (size_t)func - 5;
-		*origAddr = (size_t)func + 5;
-		VirtualProtect(func, 5, oldProtect, &oldProtect);
-	}
+		size_t funce_offset = static_cast<size_t>(func + SIZE_FN_PROLOG_OFFSET);
+		*origAddr = funce_offset;
+		hook->address = reinterpret_cast<size_t>(hookFunc) - funce_offset;
+		VirtualProtect(func, SIZE_FN_PROLOG_OFFSET, oldProtect, &oldProtect);
+	} // TODO extract VirtualProtect logic
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
-	if (ul_reason_for_call == DLL_PROCESS_ATTACH)
-	{
+	switch (reason) {
+	case DLL_PROCESS_ATTACH:
 		DisableThreadLibraryCalls(hModule);
 
 #if _DEBUG
 		MessageBoxW(0, L"DLL_PROCESS_ATTACH", L"", 0);
 #endif
 
-		if (!LoadDLL())
-			return FALSE;
+		if (!LoadDLL()) return false;
 
 		auto path = GetModuleFsPath(hModule);
-		auto configPath = path / CONFIG_FILE;
+		auto configPath = path/CONFIG_FILE;
 		if (!fs::exists(configPath))
 		{
 			FILE* f;
@@ -491,12 +489,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
 			SetThreadDpiAware();
 			MessageBoxW(0, msg, L"Error", MB_ICONERROR);
-			return TRUE;
+			return true;
 		}
 
 		if (debug)
 		{
-			auto logPath = path / LOG_FILE;
+			auto logPath = path/LOG_FILE;
 			logFile = _wfsopen(logPath.c_str(), L"a+", _SH_DENYWR);
 			setvbuf(logFile, nullptr, _IOLBF, BUFSIZ);
 		}
@@ -549,11 +547,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		{
 			InlineHook(pfnCreateFontIndirectW, MyCreateFontIndirectW, &addrCreateFontIndirectW);
 		}
-	}
-	else if (ul_reason_for_call == DLL_PROCESS_DETACH)
-	{
+	break;
+	case DLL_PROCESS_DETACH:
 		if (logFile)
 			fclose(logFile);
+	break;
 	}
-	return TRUE;
 }

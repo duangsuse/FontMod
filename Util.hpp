@@ -1,7 +1,9 @@
 #pragma once
 
 #define CALLWITHVEC(fn, vecName) fn(vecName, _ARRAYSIZE(vecName))
-#define ISNULL == NULL
+#define ISNULL ==nullptr
+
+#define bool_string(b) b != FALSE ? "true" : "false"
 
 // https://msdn.microsoft.com/en-us/magazine/mt763237
 bool Utf8ToUtf16(const std::string_view& utf8, std::wstring& utf16)
