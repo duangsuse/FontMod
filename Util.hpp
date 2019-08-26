@@ -168,14 +168,24 @@ auto GetModuleFsPath(HMODULE hModule)
 	return fs::path(path).remove_filename();
 }
 
+fs::path GetModuleFsPath_(HMODULE mod)
+{
+	std::wstring pathstr(MAX_PATH, L'\0');
+	DWORD actualsize = GetModuleFileNameW(mod, pathstr.data(), pathsize);
+	for (size_t pathsize = pathstr.size();
+			static_cast<DWORD>(pathsize) <= actualsize;
+			pathsize = pathstr.size()) {
+		pathstr.resize(pathsize * 2);
+	}
+	pathstr.resize(actualsize);
+	return fs::path(pathstr).remove_filename();
+}
+
+using SetThreadDpiAwarenessContextPtr = DPI_AWARENESS_CONTEXT (WINAPI *)(DPI_AWARENESS_CONTEXT);
 void SetThreadDpiAware()
 {
 	HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
-	if (hUser32)
-	{
-		using SetThreadDpiAwarenessContextPtr = DPI_AWARENESS_CONTEXT(WINAPI *)(DPI_AWARENESS_CONTEXT);
-		auto funcPtr = reinterpret_cast<SetThreadDpiAwarenessContextPtr>(GetProcAddress(hUser32, "SetThreadDpiAwarenessContext"));
-		if (funcPtr)
-			funcPtr(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	}
+	if (hUser32 ISNULL) { return; }
+	auto funcPtr = reinterpret_cast<SetThreadDpiAwarenessContextPtr>(GetProcAddress(hUser32, "SetThreadDpiAwarenessContext"));
+	if (funcPtr) funcPtr(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
 }
