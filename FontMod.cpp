@@ -19,10 +19,13 @@ namespace fs = std::filesystem;
 const char CONFIG_FILE[] = L"FontMod.yaml";
 const char LOG_FILE[] = L"FontMod.log";
 
+using namespace bitflag;
+
 #pragma pack(push, 1)
-struct jmp
+// 8-bit opcode, Immediate number machine word size address
+struct x86Ins8Iaddr
 {
-	uint8_t opcode = 0xE9;
+	uint8_t opcode;
 	size_t address;
 };
 #pragma pack(pop)
@@ -31,7 +34,6 @@ size_t addrCreateFontIndirectW = 0;
 size_t addrGetStockObject = 0;
 
 // overrideflags
-constexpr uint32_t bitflagAt(unsigned idx) { return 0b1 << idx; }
 const uint32_t _NONE   = 0;
 const uint32_t _HEIGHT = bitflagAt(1);
 const uint32_t _WIDTH  = bitflagAt(2);
@@ -445,10 +447,11 @@ void InlineHook(void* func, void* hookFunc, size_t* origAddr)
 	DWORD oldProtect;
 	if (VirtualProtect(func, SIZE_FN_PROLOG_OFFSET, PAGE_EXECUTE_READWRITE, &oldProtect))
 	{
-		jmp* hook = reinterpret_cast<jmp*>(func);
+		x86Ins8Iaddr* hookjmp = reinterpret_cast<x86Ins8Iaddr*>(func);
 		size_t funce_offset = static_cast<size_t>(func + SIZE_FN_PROLOG_OFFSET);
 		*origAddr = funce_offset;
-		hook->address = reinterpret_cast<size_t>(hookFunc) - funce_offset;
+		hookjmp->opcode = 0xE9; // jmp
+		hookjmp->address = reinterpret_cast<size_t>(hookFunc) - funce_offset;
 		VirtualProtect(func, SIZE_FN_PROLOG_OFFSET, oldProtect, &oldProtect);
 	} // TODO extract VirtualProtect logic
 }

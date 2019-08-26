@@ -2,8 +2,13 @@
 
 #define CALLWITHVEC(fn, vecName) fn(vecName, _ARRAYSIZE(vecName))
 #define ISNULL ==nullptr
+#define NOTNULL !=nullptr
 
 #define bool_string(b) b != FALSE ? "true" : "false"
+
+namespace bitflag {
+	constexpr uint32_t bitflagAt(unsigned idx) { return 0b1 << idx; }
+};
 
 // https://msdn.microsoft.com/en-us/magazine/mt763237
 bool Utf8ToUtf16(const std::string_view& utf8, std::wstring& utf16)
